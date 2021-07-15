@@ -1,0 +1,51 @@
+import tensorflow as tf
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import LabelEncoder
+
+df = pd.read_csv('coin_XRP.csv')
+df.dropna(axis=0, inplace=True)
+df = df[['Volume', 'High', 'Low', 'Marketcap', 'Close']]
+
+Train_Data = np.array(df).astype('float32')
+
+# normalization
+scaler = MinMaxScaler(feature_range=(0, 1))
+scaled = scaler.fit_transform(Train_Data)
+
+X = []
+y = []
+for i in range(60, scaled.shape[0]):
+    X.append(scaled[i-60:i])
+    y.append(scaled[i, 3])
+
+validationDays = 400
+y = np.array(y)
+X = np.array(X)
+train_X = X[: -validationDays]
+val_x = X[-validationDays:]
+train_y = y[: -validationDays]
+val_y = y[-validationDays:]
+
+my_callbacks = [tf.keras.callbacks.EarlyStopping(monitor="val_loss", patience=20, restore_best_weights=True),]
+
+inputs = tf.keras.layers.Input(shape=(train_X.shape[1], train_X.shape[2]))
+lstm1_out = tf.keras.layers.LSTM(50, input_shape=(None, 60, 4), return_sequences=True, activation='relu')(inputs)
+DO1 = tf.keras.layers.Dropout(0.2, noise_shape=None, seed=None)(lstm1_out)
+lstm2_out = tf.keras.layers.LSTM(30, input_shape=(None, 50, 1),  activation='relu')(DO1) #
+DO2 = tf.keras.layers.Dropout(0.4, noise_shape=None, seed=None)(lstm2_out)
+outputs = tf.keras.layers.Dense(1)(DO2)
+model = tf.keras.Model(inputs=inputs, outputs=outputs)
+model.compile(optimizer='adam', loss='mse', metrics=['mse'])
+history = model.fit(train_X, train_y,  epochs=20, validation_data=(val_x, val_y), callbacks=my_callbacks) #  , validation_split=0.2 batch_size=64,
+
+tf.keras.utils.plot_model(model, expand_nested=True, show_shapes=True, to_file='TS_coin_XRP.png', dpi=80)
+
+y_pred = model.predict(val_x)
+t = np.arange(0., 1, 1/validationDays)
+val_y = np.reshape(val_y, (-1, 1))
+plt.plot(t, val_y, 'bs--', t, y_pred, 'r')
+plt.xlabel('labeled')
+plt.ylabel('pred')
